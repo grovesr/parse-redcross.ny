@@ -1,10 +1,18 @@
 #!/usr/bin/python
+"""
+Created by: Rob Groves
+Date: 07/24/15
+
+parse NYC Red Cross inventory spreadsheets into a format suitable
+for uploading to RIMS database 
+"""
 import sys
 import os
 import glob
 import xlwt
 from xlrdutils import xlrdutils
 import code
+from optparse import OptionParser
 
 def get_sites(filename =None):
     if not filename:
@@ -119,79 +127,86 @@ def calculate_pkg_qty(data, productInformationFilename):
             print productDict
             raise e
             sys.exit(-1)
-        print divisor
         for item in siteInventoryList:
             if code not in extendedData:
                 extendedData[code] = []
             qty = item[2]
-            print qty
             if qty != '' and qty != 'na' and qty != 'x' and qty != 'X':
-                extendedData[code].append(int(qty) / int(divisor))
+                extendedData[code].append((item[0],
+                                           item[1],
+                                           int(qty) / int(divisor),))
+        if len(extendedData[code]) == 0:
+            del extendedData[code]
     return extendedData
 
-# begin main program
-if len(sys.argv) < 2:
-    raw_input("Please specify a redcross inventory directory. Hit [enter] then try again.\n")
-    sys.exit(-1)
-if not os.path.isdir(sys.argv[1]):
-    raw_input("First argument to this script should be the name of a directory containing csv inventory files. Hit [enter] then try again.\n")
-    sys.exit(-1)
-# determine inventory directory name
-inventoryDirFullPathName = sys.argv[1]
-inventoryDirName = inventoryDirFullPathName.rsplit(".",1)
-inventoryDirName = inventoryDirName[0].rsplit(os.sep,1)
-inventoryDirName = inventoryDirName[1]
-dirContents = glob.glob(inventoryDirFullPathName + os.sep + '*inventory*.xls')
-deliverySiteFilename = inventoryDirFullPathName + os.sep + 'Delivery_Sites.xls'
-productInformationFilename = inventoryDirFullPathName + os.sep + 'Product_Information.xls'
-dirContents.sort()
-allData = {}
-sheets = ['DS Supplies',
-          'Food Related',
-          'Clothing',
-          'Other',]
-for filename in dirContents:
-    print filename
-    try:
-        workbook=xlrdutils.open_workbook(filename=filename)
-    except (xlrdutils.XlrdutilsOpenWorkbookError,
-            xlrdutils.XlrdutilsOpenSheetError) as e:
-        warningMessage = repr(e)
-        print warningMessage
-        raise e
-        continue
-    for k in range(len(sheets)):
-        sheetName = sheets[k]
+def main():
+    # begin main program
+    usage = "usage: %prog -d INVENTORYDIR"
+    parser = OptionParser(usage)
+    parser.add_option("-d", "--dir", dest="inventoryDirFullPathName",
+                      help="read inventory spreadsheets in INVENTORYDIR")
+    (options, args) = parser.parse_args()
+    if not options.inventoryDirFullPathName:
+        parser.error("No -d INVENTORYDIR supplied")
+    # determine inventory directory name
+    inventoryDirFullPathName = options.inventoryDirFullPathName
+    dirContents = glob.glob(inventoryDirFullPathName + os.sep + '*inventory*.xls')
+    deliverySiteFilename = inventoryDirFullPathName + os.sep + 'Delivery_Sites.xls'
+    productInformationFilename = inventoryDirFullPathName + os.sep + 'Product_Information.xls'
+    dirContents.sort()
+    allData = {}
+    sheets = ['DS Supplies',
+              'Food Related',
+              'Clothing',
+              'Other',]
+    for filename in dirContents:
+        print filename
         try:
-            data=xlrdutils.read_lines(workbook, 
-                                      headerKeys=['Location.*',],
-                                      sheet=sheetName,)
-        except (xlrdutils.XlrdutilsReadHeaderError,
-                xlrdutils.XlrdutilsDateParseError) as e:
+            workbook=xlrdutils.open_workbook(filename=filename)
+        except (xlrdutils.XlrdutilsOpenWorkbookError,
+                xlrdutils.XlrdutilsOpenSheetError) as e:
             warningMessage = repr(e)
             print warningMessage
             raise e
-            sys.exit(-1)
-        for header in data.keys():
-            if 'Location' in header:
-                # returns list of tuples [(siteName, siteNumber),]
-                    siteList = parse_sites(data[header],deliverySiteFilename)
-        for headerVal,siteQtyList in data.iteritems():
-            if 'Location' not in headerVal:
-                if headerVal not in allData:
-                    allData[headerVal] = []
-                for k in range(len(siteList)):
-                    # headerVal is the product code, so we are appending a
-                    # three tuple (siteName, siteNumber, product quantity) to
-                    # a list of three tuples for a given product code
-                    allData[headerVal].append((siteList[k][0],siteList[k][1],siteQtyList[k]))
-extendedData = calculate_pkg_qty(allData, productInformationFilename)
-inventoryData={}
-for code,siteInventoryList in extendedData.iteritems():
-    for inventoryTuple in siteInventoryList:
-        if inventoryTuple[2] != '' and inventoryTuple[2] != 'na' and inventoryTuple[2] != 'x' and inventoryTuple[2] != 'X':
-            if code not in inventoryData:
-                inventoryData[code] = []
-            inventoryData[code].append(inventoryTuple)
-xls = create_inventory_workbook(inventoryData)
-xls.save(inventoryDirFullPathName + os.sep + 'Inventory.xls')
+            continue
+        for k in range(len(sheets)):
+            sheetName = sheets[k]
+            try:
+                data=xlrdutils.read_lines(workbook, 
+                                          headerKeys=['Location.*',],
+                                          sheet=sheetName,)
+            except (xlrdutils.XlrdutilsReadHeaderError,
+                    xlrdutils.XlrdutilsDateParseError) as e:
+                warningMessage = repr(e)
+                print warningMessage
+                raise e
+                sys.exit(-1)
+            for header in data.keys():
+                if 'Location' in header:
+                    # returns list of tuples [(siteName, siteNumber),]
+                        siteList = parse_sites(data[header],deliverySiteFilename)
+            for headerVal,siteQtyList in data.iteritems():
+                if 'Location' not in headerVal:
+                    if headerVal not in allData:
+                        allData[headerVal] = []
+                    for k in range(len(siteList)):
+                        # headerVal is the product code, so we are appending a
+                        # three tuple (siteName, siteNumber, product quantity) to
+                        # a list of three tuples for a given product code
+                        allData[headerVal].append((siteList[k][0],siteList[k][1],siteQtyList[k]))
+    # this puts out package counts
+    extendedData = calculate_pkg_qty(allData, productInformationFilename)
+    # this puts out piece counts
+    #extendedData = allData
+    inventoryData={}
+    for code,siteInventoryList in extendedData.iteritems():
+        for inventoryTuple in siteInventoryList:
+            if inventoryTuple[2] != '' and inventoryTuple[2] != 'na' and inventoryTuple[2] != 'x' and inventoryTuple[2] != 'X':
+                if code not in inventoryData:
+                    inventoryData[code] = []
+                inventoryData[code].append(inventoryTuple)
+    xls = create_inventory_workbook(inventoryData)
+    xls.save(inventoryDirFullPathName + os.sep + 'Inventory.xls')
+
+if __name__ == '__main__':
+    main()
