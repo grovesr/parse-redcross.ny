@@ -152,7 +152,7 @@ def main():
     inventoryDirFullPathName = options.inventoryDirFullPathName
     dirContents = glob.glob(inventoryDirFullPathName + os.sep + '*inventory*.xls')
     deliverySiteFilename = inventoryDirFullPathName + os.sep + 'Delivery_Sites.xls'
-    productInformationFilename = inventoryDirFullPathName + os.sep + 'Product_Information.xls'
+    productInformationFilename = inventoryDirFullPathName + os.sep + 'Product_Information_Each.xls'
     dirContents.sort()
     allData = {}
     sheets = ['DS Supplies',
